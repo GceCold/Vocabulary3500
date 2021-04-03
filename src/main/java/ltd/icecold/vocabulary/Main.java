@@ -1,8 +1,12 @@
 package ltd.icecold.vocabulary;
 
+import com.google.gson.JsonParser;
 import jxl.Workbook;
 import jxl.read.biff.BiffException;
 import jxl.write.*;
+import org.apache.commons.codec.digest.DigestUtils;
+import org.jsoup.Connection;
+import org.jsoup.Jsoup;
 
 import java.io.*;
 import java.net.URL;
@@ -53,6 +57,9 @@ public class Main {
                 System.out.println(vocabulary.get(command));
             }else {
                 System.out.println("未找到单词");
+                String unKnowWord = unKnowWord(command);
+                writeVocabulary(command+" "+unKnowWord);
+                System.out.println("百度翻译：" + command+" "+unKnowWord);
             }
 
         } catch (Exception e) {
@@ -61,17 +68,49 @@ public class Main {
         input(input);
     }
 
-    public static void writeVocabulary(String words) throws WriteException, IOException {
+    public static String unKnowWord(String word) throws IOException {
+        Random random=new Random();
+        Map<String,String> data = new HashMap<>();
+        data.put("q",word);
+        data.put("from","en");
+        data.put("to","zh");
+        data.put("appid","***");
+        int number=random.nextInt(1000000000);
+        data.put("salt",String.valueOf(number));
+        data.put("sign", DigestUtils.md5Hex("***"+word+number+"***").toLowerCase());
+
+        Connection.Response execute = Jsoup
+                .connect("http://api.fanyi.baidu.com/api/trans/vip/translate")
+                .header("Content-Type","application/x-www-form-urlencoded")
+                .data(data)
+                .timeout(5 * 1000)
+                .ignoreContentType(true)
+                .method(Connection.Method.POST)
+                .execute();
+
+        return new JsonParser().parse(execute.body()).getAsJsonObject().get("trans_result").getAsJsonArray().get(0).getAsJsonObject().get("dst").getAsString();
+
+    }
+
+    public static void writeVocabulary(String words) throws WriteException, IOException, BiffException {
         File excel = new File("check.xls");
-        FileOutputStream fileOutputStream = new FileOutputStream(excel);
-        WritableWorkbook workbook = Workbook.createWorkbook(fileOutputStream);
+        WritableWorkbook workbook;
+        if (excel.exists()){
+            InputStream instream = new FileInputStream(excel);
+            Workbook readwb = Workbook.getWorkbook(instream);
+            workbook = Workbook.createWorkbook(excel,readwb);
+        }else {
+            FileOutputStream fileOutputStream = new FileOutputStream(excel);
+            workbook = Workbook.createWorkbook(fileOutputStream);
+        }
+
 
         List<String> sheets = new ArrayList<>(Arrays.asList(workbook.getSheetNames()));
         WritableSheet sheet ;
         if (!sheets.contains("Unknown Vocabulary")){
             workbook.createSheet("Unknown Vocabulary",0);
         }
-        sheet = workbook.getSheet("Unknown Vocabulary");
+        sheet = workbook.getSheet(0);
 
         String[] s = words.split(" ");
 
@@ -108,7 +147,6 @@ public class Main {
 
         workbook.write();
         workbook.close();
-        fileOutputStream.close();
     }
 
     public static InputStream getResource(String filename) {
